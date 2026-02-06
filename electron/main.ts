@@ -1,13 +1,47 @@
 import { app, BrowserWindow, nativeImage, dialog } from 'electron';
 import path from 'path';
-import { spawn, ChildProcess } from 'child_process';
+import { spawn, execFileSync, ChildProcess } from 'child_process';
 import net from 'net';
 
 let mainWindow: BrowserWindow | null = null;
 let serverProcess: ChildProcess | null = null;
 let serverPort: number | null = null;
+let serverErrors: string[] = [];
 
 const isDev = !app.isPackaged;
+
+function findNodePath(): string {
+  // Try to find the system Node.js binary
+  const candidates = [
+    '/usr/local/bin/node',
+    '/opt/homebrew/bin/node',
+    // Use `which` as fallback
+  ];
+
+  for (const p of candidates) {
+    try {
+      execFileSync(p, ['--version'], { timeout: 3000 });
+      return p;
+    } catch {
+      // not found, try next
+    }
+  }
+
+  // Fallback: use `which node` to find it
+  try {
+    const result = execFileSync('/usr/bin/which', ['node'], {
+      timeout: 3000,
+      env: {
+        ...process.env,
+        PATH: `/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:${process.env.PATH || ''}`,
+      },
+    });
+    return result.toString().trim();
+  } catch {
+    // Last resort: use Electron as Node
+    return process.execPath;
+  }
+}
 
 function getPort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -29,6 +63,12 @@ function getPort(): Promise<number> {
 async function waitForServer(port: number, timeout = 30000): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeout) {
+    // If the server process already exited, fail fast
+    if (serverProcess && serverProcess.exitCode !== null) {
+      throw new Error(
+        `Server process exited with code ${serverProcess.exitCode}.\n\n${serverErrors.join('\n')}`
+      );
+    }
     try {
       await new Promise<void>((resolve, reject) => {
         const req = require('http').get(`http://127.0.0.1:${port}/api/health`, (res: { statusCode?: number }) => {
@@ -46,34 +86,51 @@ async function waitForServer(port: number, timeout = 30000): Promise<void> {
       await new Promise(r => setTimeout(r, 200));
     }
   }
-  throw new Error('Server startup timeout');
+  throw new Error(
+    `Server startup timeout after ${timeout / 1000}s.\n\n${serverErrors.length > 0 ? 'Server output:\n' + serverErrors.slice(-10).join('\n') : 'No server output captured.'}`
+  );
 }
 
 function startServer(port: number): ChildProcess {
-  const serverPath = path.join(process.resourcesPath, 'standalone', 'server.js');
+  const standaloneDir = path.join(process.resourcesPath, 'standalone');
+  const serverPath = path.join(standaloneDir, 'server.js');
+  const nodePath = findNodePath();
+  const useElectronAsNode = nodePath === process.execPath;
 
-  // Use the bundled Node.js from Electron's helper
-  const nodePath = process.execPath;
+  console.log(`Using Node.js: ${nodePath}`);
+  console.log(`Server path: ${serverPath}`);
+  console.log(`Standalone dir: ${standaloneDir}`);
+
+  serverErrors = [];
+
+  const env: Record<string, string> = {
+    ...process.env as Record<string, string>,
+    PORT: String(port),
+    HOSTNAME: '127.0.0.1',
+    CLAUDE_GUI_DATA_DIR: app.getPath('userData'),
+    PATH: `/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:${process.env.PATH || ''}`,
+  };
+
+  if (useElectronAsNode) {
+    env.ELECTRON_RUN_AS_NODE = '1';
+  }
 
   const child = spawn(nodePath, [serverPath], {
-    env: {
-      ...process.env,
-      PORT: String(port),
-      HOSTNAME: '127.0.0.1',
-      CLAUDE_GUI_DATA_DIR: app.getPath('userData'),
-      // Tell Electron's Node not to load the Electron module
-      ELECTRON_RUN_AS_NODE: '1',
-    },
+    env,
     stdio: 'pipe',
-    cwd: path.join(process.resourcesPath, 'standalone'),
+    cwd: standaloneDir,
   });
 
   child.stdout?.on('data', (data: Buffer) => {
-    console.log(`[server] ${data.toString().trim()}`);
+    const msg = data.toString().trim();
+    console.log(`[server] ${msg}`);
+    serverErrors.push(msg);
   });
 
   child.stderr?.on('data', (data: Buffer) => {
-    console.error(`[server] ${data.toString().trim()}`);
+    const msg = data.toString().trim();
+    console.error(`[server:err] ${msg}`);
+    serverErrors.push(msg);
   });
 
   child.on('exit', (code) => {
