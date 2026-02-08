@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import type { Message, TokenUsage } from '@/types';
+import type { Message, TokenUsage, FileAttachment } from '@/types';
 import {
   Message as AIMessage,
   MessageContent,
@@ -16,6 +16,7 @@ import {
 } from '@/components/ai-elements/tool';
 import { CopyIcon, CheckIcon } from 'lucide-react';
 import type { ToolUIPart } from 'ai';
+import { FileAttachmentDisplay } from './FileAttachmentDisplay';
 
 interface MessageItemProps {
   message: Message;
@@ -112,6 +113,18 @@ function getToolState(result?: string, isError?: boolean): ToolUIPart['state'] {
   return 'output-available';
 }
 
+function parseMessageFiles(content: string): { files: FileAttachment[]; text: string } {
+  const match = content.match(/^<!--files:(.*?)-->\n?/);
+  if (!match) return { files: [], text: content };
+  try {
+    const files = JSON.parse(match[1]);
+    const text = content.slice(match[0].length);
+    return { files, text };
+  } catch {
+    return { files: [], text: content };
+  }
+}
+
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
 
@@ -164,6 +177,13 @@ export function MessageItem({ message }: MessageItemProps) {
   const { text, tools } = parseToolBlocks(message.content);
   const pairedTools = pairTools(tools);
 
+  // Parse file attachments from user messages
+  const { files, text: textWithoutFiles } = isUser
+    ? parseMessageFiles(text)
+    : { files: [], text };
+
+  const displayText = isUser ? textWithoutFiles : text;
+
   let tokenUsage: TokenUsage | null = null;
   if (message.token_usage) {
     try {
@@ -181,6 +201,11 @@ export function MessageItem({ message }: MessageItemProps) {
   return (
     <AIMessage from={isUser ? 'user' : 'assistant'}>
       <MessageContent>
+        {/* File attachments for user messages */}
+        {isUser && files.length > 0 && (
+          <FileAttachmentDisplay files={files} />
+        )}
+
         {/* Tool calls for assistant messages */}
         {!isUser && pairedTools.length > 0 && (
           <div className="space-y-2 w-full">
@@ -204,11 +229,11 @@ export function MessageItem({ message }: MessageItemProps) {
         )}
 
         {/* Text content */}
-        {text && (
+        {displayText && (
           isUser ? (
-            <div className="text-sm whitespace-pre-wrap break-words">{text}</div>
+            <div className="text-sm whitespace-pre-wrap break-words">{displayText}</div>
           ) : (
-            <MessageResponse>{text}</MessageResponse>
+            <MessageResponse>{displayText}</MessageResponse>
           )
         )}
       </MessageContent>
@@ -217,7 +242,7 @@ export function MessageItem({ message }: MessageItemProps) {
       <div className={`flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 ${isUser ? 'justify-end' : ''}`}>
         {!isUser && <span className="text-xs text-muted-foreground/50">{timestamp}</span>}
         {!isUser && tokenUsage && <TokenUsageDisplay usage={tokenUsage} />}
-        {text && <CopyButton text={text} />}
+        {displayText && <CopyButton text={displayText} />}
       </div>
     </AIMessage>
   );

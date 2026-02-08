@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import type { Message, SSEEvent, TokenUsage, PermissionRequestEvent } from '@/types';
+import type { Message, SSEEvent, TokenUsage, PermissionRequestEvent, FileAttachment } from '@/types';
 import { MessageList } from './MessageList';
 import { MessageInput } from './MessageInput';
 import { usePanel } from '@/hooks/usePanel';
@@ -141,15 +141,22 @@ export function ChatView({ sessionId, initialMessages = [], modelName, initialMo
   }, [pendingPermission, setPendingApprovalSessionId]);
 
   const sendMessage = useCallback(
-    async (content: string) => {
+    async (content: string, files?: FileAttachment[]) => {
       if (isStreaming) return;
+
+      // Build display content: embed file metadata as HTML comment for MessageItem to parse
+      let displayContent = content;
+      if (files && files.length > 0) {
+        const fileMeta = files.map(f => ({ id: f.id, name: f.name, type: f.type, size: f.size }));
+        displayContent = `<!--files:${JSON.stringify(fileMeta)}-->${content}`;
+      }
 
       // Optimistic: add user message to UI immediately
       const userMessage: Message = {
         id: 'temp-' + Date.now(),
         session_id: sessionId,
         role: 'user',
-        content,
+        content: displayContent,
         created_at: new Date().toISOString(),
         token_usage: null,
       };
@@ -171,7 +178,13 @@ export function ChatView({ sessionId, initialMessages = [], modelName, initialMo
         const response = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ session_id: sessionId, content, mode, model: currentModel }),
+          body: JSON.stringify({
+            session_id: sessionId,
+            content,
+            mode,
+            model: currentModel,
+            ...(files && files.length > 0 ? { files } : {}),
+          }),
           signal: controller.signal,
         });
 
