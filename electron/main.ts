@@ -71,12 +71,13 @@ function checkNativeModuleABI(): void {
 
 /**
  * Read the user's full shell environment by running a login shell.
- * When Electron is launched from Dock/Finder, process.env is very limited
- * and won't include vars from .zshrc/.bashrc (e.g. API keys).
+ * When Electron is launched from Dock/Finder (macOS) or desktop launcher
+ * (Linux), process.env is very limited and won't include vars from
+ * .zshrc/.bashrc (e.g. API keys, nvm PATH).
  */
 function loadUserShellEnv(): Record<string, string> {
-  // Only macOS needs login-shell env loading; Windows/Linux GUI apps inherit full env
-  if (process.platform !== 'darwin') {
+  // Windows GUI apps inherit the full user environment
+  if (process.platform === 'win32') {
     return {};
   }
   try {
@@ -249,6 +250,9 @@ function getIconPath(): string {
   }
   if (process.platform === 'win32') {
     return path.join(process.resourcesPath, 'icon.ico');
+  }
+  if (process.platform === 'linux') {
+    return path.join(process.resourcesPath, 'icon.png');
   }
   return path.join(process.resourcesPath, 'icon.icns');
 }

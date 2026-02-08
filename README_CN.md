@@ -74,8 +74,7 @@ npm run electron:dev
 
 - **macOS** -- 支持 arm64（Apple Silicon）和 x64（Intel）架构的 `.dmg` 安装包
 - **Windows** -- 提供 `.zip` 压缩包，解压即用
-
-> **Linux** 版本正在计划中，欢迎贡献。
+- **Linux** -- 支持 x64 和 arm64 架构，提供 `.AppImage`、`.deb` 和 `.rpm` 格式
 
 ---
 

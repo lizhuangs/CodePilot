@@ -55,8 +55,7 @@ Pre-built releases are available on the [**Releases**](https://github.com/op7418
 
 - **macOS**: Universal binary (arm64 + x64) distributed as `.dmg`
 - **Windows**: x64 distributed as `.zip`
-
-> Linux builds are planned. Contributions welcome.
+- **Linux**: x64 and arm64 distributed as `.AppImage`, `.deb`, and `.rpm`
 
 ---
 
