@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import type { Message, TokenUsage, FileAttachment } from '@/types';
 import {
   Message as AIMessage,
@@ -14,7 +14,7 @@ import {
   ToolInput,
   ToolOutput,
 } from '@/components/ai-elements/tool';
-import { CopyIcon, CheckIcon } from 'lucide-react';
+import { CopyIcon, CheckIcon, ChevronDownIcon, ChevronUpIcon } from 'lucide-react';
 import type { ToolUIPart } from 'ai';
 import { FileAttachmentDisplay } from './FileAttachmentDisplay';
 
@@ -214,6 +214,8 @@ function TokenUsageDisplay({ usage }: { usage: TokenUsage }) {
   );
 }
 
+const COLLAPSE_HEIGHT = 300;
+
 export function MessageItem({ message }: MessageItemProps) {
   const isUser = message.role === 'user';
   const { text, tools } = parseToolBlocks(message.content);
@@ -225,6 +227,17 @@ export function MessageItem({ message }: MessageItemProps) {
     : { files: [], text };
 
   const displayText = isUser ? textWithoutFiles : text;
+
+  // Collapse/expand state for long user messages
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [isOverflowing, setIsOverflowing] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isUser && contentRef.current) {
+      setIsOverflowing(contentRef.current.scrollHeight > COLLAPSE_HEIGHT);
+    }
+  }, [isUser, displayText]);
 
   let tokenUsage: TokenUsage | null = null;
   if (message.token_usage) {
@@ -273,7 +286,41 @@ export function MessageItem({ message }: MessageItemProps) {
         {/* Text content */}
         {displayText && (
           isUser ? (
-            <div className="text-sm whitespace-pre-wrap break-words">{displayText}</div>
+            <div className="relative">
+              <div
+                ref={contentRef}
+                className="text-sm whitespace-pre-wrap break-words transition-[max-height] duration-300 ease-in-out overflow-hidden"
+                style={
+                  isOverflowing && !isExpanded
+                    ? { maxHeight: `${COLLAPSE_HEIGHT}px` }
+                    : undefined
+                }
+              >
+                {displayText}
+              </div>
+              {isOverflowing && !isExpanded && (
+                <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-secondary to-transparent pointer-events-none" />
+              )}
+              {isOverflowing && (
+                <button
+                  type="button"
+                  onClick={() => setIsExpanded(!isExpanded)}
+                  className="relative z-10 flex items-center gap-1 mt-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {isExpanded ? (
+                    <>
+                      <ChevronUpIcon className="h-3 w-3" />
+                      <span>收起</span>
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDownIcon className="h-3 w-3" />
+                      <span>展开</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
           ) : (
             <MessageResponse>{displayText}</MessageResponse>
           )
