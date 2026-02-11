@@ -566,7 +566,7 @@ export function MessageInput({
     };
 
     // If badge is active, expand the command/skill and send
-    if (badge) {
+    if (badge && !isStreaming) {
       let expandedPrompt = '';
 
       if (badge.isSkill) {
@@ -604,7 +604,7 @@ export function MessageInput({
     const files = await convertFiles();
     const hasFiles = files.length > 0;
 
-    if ((!content && !hasFiles) || disabled) return;
+    if ((!content && !hasFiles) || disabled || isStreaming) return;
 
     // Check if it's a direct slash command typed in the input
     if (content.startsWith('/') && !hasFiles) {
@@ -642,7 +642,7 @@ export function MessageInput({
 
     onSend(content || 'Please review the attached file(s).', hasFiles ? files : undefined);
     setInputValue('');
-  }, [inputValue, onSend, onCommand, disabled, closePopover, badge]);
+  }, [inputValue, onSend, onCommand, disabled, isStreaming, closePopover, badge]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -904,7 +904,7 @@ export function MessageInput({
               value={inputValue}
               onChange={(e) => handleInputChange(e.currentTarget.value)}
               onKeyDown={handleKeyDown}
-              disabled={disabled || isStreaming}
+              disabled={disabled}
               className="min-h-10"
             />
             <PromptInputFooter>
